@@ -21,3 +21,4 @@ coverage.xml
 .pytest_cache
 .hypothesis/
 .DS_Store
+netbox_mcp_rw.egg-info/

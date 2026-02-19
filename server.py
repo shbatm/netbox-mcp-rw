@@ -712,18 +712,20 @@ def netbox_bulk_delete_objects(object_type: str, object_ids: list):
     else:
         return {"success": False, "message": f"Failed to delete {object_type} objects"}
 
-if __name__ == "__main__":
+def main():
+    global netbox
+
     # Load NetBox configuration from environment variables
     netbox_url = os.getenv("NETBOX_URL")
     netbox_token = os.getenv("NETBOX_TOKEN")
     verify_ssl_raw = os.getenv("NETBOX_VERIFY_SSL", "true")
     verify_ssl = str(verify_ssl_raw).strip().lower() not in ("0", "false", "no", "off")
-    
+
     if not netbox_url or not netbox_token:
         raise ValueError("NETBOX_URL and NETBOX_TOKEN environment variables must be set")
 
     netbox_url = _auto_detect_scheme(netbox_url)
-    
+
     # Initialize NetBox client
     netbox = NetBoxRestClient(url=netbox_url, token=netbox_token, verify_ssl=verify_ssl)
 
@@ -738,5 +740,8 @@ if __name__ == "__main__":
     if enable_netbox4:
         NETBOX_OBJECT_TYPES.update(NETBOX_OBJECT_TYPES_NETBOX4)
     _detect_capabilities()
-    
+
     mcp.run(transport="stdio")
+
+if __name__ == "__main__":
+    main()
