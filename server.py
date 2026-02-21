@@ -137,6 +137,17 @@ NETBOX_OBJECT_TYPES = dict(NETBOX_OBJECT_TYPES_BASE)
 mcp = FastMCP("NetBox", log_level="DEBUG")
 netbox = None
 
+# Tools removed in read-only mode.
+WRITE_TOOLS: list[str] = [
+    "netbox_set_interface_mac",
+    "netbox_create_object",
+    "netbox_update_object",
+    "netbox_delete_object",
+    "netbox_bulk_create_objects",
+    "netbox_bulk_update_objects",
+    "netbox_bulk_delete_objects",
+]
+
 def _truthy_env(name: str, default: str = "false") -> bool:
     raw = os.getenv(name, default)
     return str(raw).strip().lower() in ("1", "true", "yes", "on")
@@ -740,6 +751,13 @@ def main():
     if enable_netbox4:
         NETBOX_OBJECT_TYPES.update(NETBOX_OBJECT_TYPES_NETBOX4)
     _detect_capabilities()
+
+    # Read-only mode: remove write tools
+    if _truthy_env("NETBOX_READ_ONLY") and WRITE_TOOLS:
+        for name in WRITE_TOOLS:
+            mcp.remove_tool(name)
+        import logging
+        logging.info("Read-only mode: %d write tools removed", len(WRITE_TOOLS))
 
     mcp.run(transport="stdio")
 
