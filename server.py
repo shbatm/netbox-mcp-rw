@@ -30,9 +30,12 @@ NETBOX_OBJECT_TYPES_BASE = {
     "rear-port-templates": "dcim/rear-port-templates",
     "device-bay-templates": "dcim/device-bay-templates",
     "front-ports": "dcim/front-ports",
+    "rear-ports": "dcim/rear-ports",
+    "cable-terminations": "dcim/cable-terminations",
     "interfaces": "dcim/interfaces",
     "interface-templates": "dcim/interface-templates",
     "inventory-items": "dcim/inventory-items",
+    "inventory-item-roles": "dcim/inventory-item-roles",
     "inventory-item-templates": "dcim/inventory-item-templates",
     "locations": "dcim/locations",
     "manufacturers": "dcim/manufacturers",
@@ -85,6 +88,7 @@ NETBOX_OBJECT_TYPES_BASE = {
     "cluster-types": "virtualization/cluster-types",
     "virtual-machines": "virtualization/virtual-machines",
     "vm-interfaces": "virtualization/interfaces",
+    "virtual-disks": "virtualization/virtual-disks",
     
     # Tenancy
     "tenants": "tenancy/tenants",
@@ -118,6 +122,10 @@ NETBOX_OBJECT_TYPES_BASE = {
     "scripts": "extras/scripts",
     "tags": "extras/tags",
     "webhooks": "extras/webhooks",
+    "journal-entries": "extras/journal-entries",
+    "event-rules": "extras/event-rules",
+    "notification-groups": "extras/notification-groups",
+    "bookmarks": "extras/bookmarks",
 }
 
 NETBOX_OBJECT_TYPES_NETBOX4 = {
@@ -346,93 +354,9 @@ def netbox_get_objects(object_type: str, filters: dict):
     Args:
         object_type: String representing the NetBox object type (e.g. "devices", "ip-addresses")
         filters: dict of filters to apply to the API call based on the NetBox API filtering options
-    
-    Valid object_type values:
-    
-    DCIM (Device and Infrastructure):
-    - cables
-    - console-ports
-    - console-server-ports  
-    - devices
-    - device-bays
-    - device-roles
-    - device-types
-    - front-ports
-    - interfaces
-    - inventory-items
-    - locations
-    - manufacturers
-    - platforms
-    - power-feeds
-    - power-outlets
-    - power-panels
-    - power-ports
-    - racks
-    - rack-reservations
-    - rack-roles
-    - regions
-    - sites
-    - site-groups
-    - virtual-chassis
-    
-    IPAM (IP Address Management):
-    - asns
-    - asn-ranges
-    - aggregates 
-    - fhrp-groups
-    - ip-addresses
-    - ip-ranges
-    - prefixes
-    - rirs
-    - roles
-    - route-targets
-    - services
-    - vlans
-    - vlan-groups
-    - vrfs
-    
-    Circuits:
-    - circuits
-    - circuit-types
-    - circuit-terminations
-    - providers
-    - provider-networks
-    
-    Virtualization:
-    - clusters
-    - cluster-groups
-    - cluster-types
-    - virtual-machines
-    - vm-interfaces
-    
-    Tenancy:
-    - tenants
-    - tenant-groups
-    - contacts
-    - contact-groups
-    - contact-roles
-    
-    VPN:
-    - ike-policies
-    - ike-proposals
-    - ipsec-policies
-    - ipsec-profiles
-    - ipsec-proposals
-    - l2vpns
-    - tunnels
-    - tunnel-groups
-    
-    Wireless:
-    - wireless-lans
-    - wireless-lan-groups
-    - wireless-links
 
-    NetBox 4.x only:
-    - modules
-    - module-bays
-    - module-profiles
-    - module-types
-    
+    Valid object types: see NETBOX_OBJECT_TYPES dict at the top of this module.
+
     See NetBox API documentation for filtering options for each object type.
     """
     # Validate object_type exists in mapping
