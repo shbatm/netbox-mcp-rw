@@ -48,7 +48,8 @@ Write tools:
 - `netbox_update_object(object_type, object_id, data)` — PATCH semantics
 - `netbox_delete_object(object_type, object_id)`
 - `netbox_create_journal_entry(assigned_object_type, assigned_object_id, comments, kind="info")` — convenience wrapper; `assigned_object_type` is dotted notation (`dcim.device`, `virtualization.virtualmachine`, etc.)
-- `netbox_set_interface_mac(interface_id, mac_address)` — version-aware (writes to `interfaces.mac_address` on NetBox 3.x, creates a `dcim/mac-addresses` and assigns `primary_mac_address` on 4.x)
+- `netbox_set_interface_mac(interface_id, mac_address)` — version-aware MAC setter for **device interfaces** (`dcim/interfaces`). Writes to `interfaces.mac_address` on NetBox 3.x, creates a `dcim/mac-addresses` and assigns `primary_mac_address` on 4.x.
+- `netbox_set_vm_interface_mac(vm_interface_id, mac_address)` — same behavior but targets **VM interfaces** (`virtualization/interfaces`). The two endpoints have independent schemas and ID spaces, so a separate tool is required to avoid silently writing to the wrong object.
 
 Bulk tools:
 
