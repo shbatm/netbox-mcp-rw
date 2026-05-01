@@ -533,6 +533,36 @@ def netbox_create_object(object_type: str, data: dict):
     return netbox.create(endpoint, data)
 
 @mcp.tool()
+def netbox_create_journal_entry(assigned_object_type: str, assigned_object_id: int,
+                                comments: str, kind: str = "info"):
+    """Create a NetBox journal entry against a specific object.
+
+    Args:
+        assigned_object_type: dotted-notation NetBox content type, e.g.
+            "dcim.device", "virtualization.virtualmachine", "ipam.prefix",
+            "dcim.site". This is the same notation used by NetBox's content-type
+            framework, NOT the URL-path style ("devices") used elsewhere in this MCP.
+        assigned_object_id: numeric ID of the object the entry attaches to.
+        comments: journal entry body (markdown supported).
+        kind: severity. One of: "info" (default), "success", "warning", "danger".
+
+    Returns:
+        The created journal entry as a dict.
+
+    Example:
+        netbox_create_journal_entry(
+            "virtualization.virtualmachine", 16,
+            "Migrated to Authentik SSO auth", kind="success"
+        )
+    """
+    return netbox.create("extras/journal-entries", {
+        "assigned_object_type": assigned_object_type,
+        "assigned_object_id": assigned_object_id,
+        "comments": comments,
+        "kind": kind,
+    })
+
+@mcp.tool()
 def netbox_update_object(object_type: str, object_id: int, data: dict):
     """
     Update an existing object in NetBox.
