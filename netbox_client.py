@@ -286,14 +286,8 @@ class NetBoxRestClient(NetBoxClientBase):
         Raises:
             requests.HTTPError: If the request fails
         """
-        # NetBox 3.x exposes /bulk/ endpoints; NetBox 4.x uses list payloads on
-        # the base endpoint for bulk operations. Try /bulk/ first for backward
-        # compatibility, then fall back if the server rejects it.
-        bulk_url = f"{self._build_url(endpoint)}bulk/"
-        response = self.session.post(bulk_url, json=data, verify=self.verify_ssl)
-        if response.status_code in (404, 405):
-            base_url = self._build_url(endpoint)
-            response = self.session.post(base_url, json=data, verify=self.verify_ssl)
+        url = self._build_url(endpoint)
+        response = self.session.post(url, json=data, verify=self.verify_ssl)
         response.raise_for_status()
         return response.json()
     
@@ -311,11 +305,8 @@ class NetBoxRestClient(NetBoxClientBase):
         Raises:
             requests.HTTPError: If the request fails
         """
-        bulk_url = f"{self._build_url(endpoint)}bulk/"
-        response = self.session.patch(bulk_url, json=data, verify=self.verify_ssl)
-        if response.status_code in (404, 405):
-            base_url = self._build_url(endpoint)
-            response = self.session.patch(base_url, json=data, verify=self.verify_ssl)
+        url = self._build_url(endpoint)
+        response = self.session.patch(url, json=data, verify=self.verify_ssl)
         response.raise_for_status()
         return response.json()
     
@@ -334,11 +325,7 @@ class NetBoxRestClient(NetBoxClientBase):
             requests.HTTPError: If the request fails
         """
         payload = [{"id": id} for id in ids]
-
-        bulk_url = f"{self._build_url(endpoint)}bulk/"
-        response = self.session.delete(bulk_url, json=payload, verify=self.verify_ssl)
-        if response.status_code in (404, 405):
-            base_url = self._build_url(endpoint)
-            response = self.session.delete(base_url, json=payload, verify=self.verify_ssl)
+        url = self._build_url(endpoint)
+        response = self.session.delete(url, json=payload, verify=self.verify_ssl)
         response.raise_for_status()
         return response.status_code == 204
