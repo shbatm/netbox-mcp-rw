@@ -470,6 +470,55 @@ def netbox_get_object_by_id(object_type: str, object_id: int):
     return netbox.get(endpoint)
 
 @mcp.tool()
+def netbox_search_objects(query: str, object_type: str = None,
+                          fields: list = None, limit: int = 50):
+    """Search NetBox using the ?q= query parameter.
+
+    Args:
+        query: search string (matched against object names, descriptions, etc.)
+        object_type: optional — restrict to a single type (e.g. "devices",
+                     "virtual-machines"). If None, searches a default set of
+                     common types and returns a flat list with `__object_type__`
+                     injected on each result.
+        fields: optional list of fields to return per match (RECOMMENDED for token
+                efficiency — e.g. ["id", "name", "status"]).
+        limit: max results per type (default 50).
+
+    Returns:
+        List of matching objects. When object_type is None, each dict has an
+        extra `__object_type__` key indicating which type matched.
+    """
+    DEFAULT_TYPES = [
+        "devices", "virtual-machines", "ip-addresses", "prefixes",
+        "vlans", "sites", "interfaces",
+    ]
+    types_to_search = [object_type] if object_type else DEFAULT_TYPES
+
+    results = []
+    for t in types_to_search:
+        if t not in NETBOX_OBJECT_TYPES:
+            if object_type:
+                raise ValueError(f"Invalid object_type: {t}")
+            continue
+
+        params = {"q": query, "limit": limit}
+        if fields:
+            params["fields"] = ",".join(fields)
+        try:
+            objs = netbox.get(NETBOX_OBJECT_TYPES[t], params=params)
+        except Exception:
+            if object_type:
+                raise
+            continue
+
+        if not object_type:
+            for o in objs:
+                o["__object_type__"] = t
+        results.extend(objs)
+
+    return results
+
+@mcp.tool()
 def netbox_get_changelogs(filters: dict):
     """
     Get object change records (changelogs) from NetBox based on filters.
