@@ -148,6 +148,7 @@ netbox = None
 # Tools removed in read-only mode.
 WRITE_TOOLS: list[str] = [
     "netbox_set_interface_mac",
+    "netbox_set_vm_interface_mac",
     "netbox_create_object",
     "netbox_update_object",
     "netbox_delete_object",
@@ -194,6 +195,9 @@ CAPABILITIES = {
     "interfaces_mac_address_writable": False,
     # NetBox 4.x uses interfaces.primary_mac_address referencing dcim/mac-addresses.
     "interfaces_primary_mac_address_writable": False,
+    # Same pair of flags but for virtualization/interfaces (VM interfaces have an independent schema).
+    "vm_interfaces_mac_address_writable": False,
+    "vm_interfaces_primary_mac_address_writable": False,
 }
 
 
@@ -241,6 +245,20 @@ def _detect_capabilities() -> None:
     primary_mac_field = schema.get("primary_mac_address") or {}
     if isinstance(primary_mac_field, dict) and primary_mac_field.get("read_only") is False:
         CAPABILITIES["interfaces_primary_mac_address_writable"] = True
+
+    # Same probe for virtualization/interfaces — schema is independent.
+    vm_iface_opts = _options("virtualization/interfaces")
+    if vm_iface_opts:
+        vm_actions = vm_iface_opts.get("actions", {}) or {}
+        vm_schema = vm_actions.get("PATCH") or vm_actions.get("POST") or {}
+
+        vm_mac_field = vm_schema.get("mac_address") or {}
+        if isinstance(vm_mac_field, dict) and vm_mac_field.get("read_only") is False:
+            CAPABILITIES["vm_interfaces_mac_address_writable"] = True
+
+        vm_primary_mac_field = vm_schema.get("primary_mac_address") or {}
+        if isinstance(vm_primary_mac_field, dict) and vm_primary_mac_field.get("read_only") is False:
+            CAPABILITIES["vm_interfaces_primary_mac_address_writable"] = True
 
 def _detect_netbox_major_version(netbox_url: str, verify_ssl: bool, token: str | None = None):
     # /api/status/ may require auth depending on NetBox config; include token if provided.
@@ -310,57 +328,111 @@ def _auto_detect_scheme(netbox_url: str) -> str:
     return urlunparse((scheme, u.netloc, u.path or "/", "", u.query, u.fragment))
 
 
-@mcp.tool()
-def netbox_set_interface_mac(interface_id: int, mac_address: str):
+def _set_mac_on_interface(
+    *,
+    interface_endpoint: str,
+    interface_content_type: str,
+    interface_id: int,
+    mac_address: str,
+    legacy_writable: bool,
+    primary_writable: bool,
+    kind_label: str,
+):
     """
-    Set the MAC address for an interface in a NetBox-version-aware way (safe-by-default).
-
-    Behavior:
-    - If interfaces.mac_address is writable, set it directly (older NetBox).
-    - Else, if dcim/mac-addresses exists and interfaces.primary_mac_address is writable, create/assign a MAC object
-      and set primary_mac_address (NetBox 4.x).
+    Shared implementation for setting a MAC on either a device interface (dcim/interfaces)
+    or a VM interface (virtualization/interfaces). Both endpoints share the same MAC-assignment
+    pattern in NetBox 4.x but use different content_types.
     """
     if not netbox:
         raise RuntimeError("NetBox client not initialized")
 
-    if CAPABILITIES["interfaces_mac_address_writable"]:
-        return netbox.update("dcim/interfaces", interface_id, {"mac_address": mac_address})
+    if legacy_writable:
+        return netbox.update(interface_endpoint, interface_id, {"mac_address": mac_address})
 
     if not CAPABILITIES["has_mac_addresses_endpoint"]:
         raise ValueError(
-            "This NetBox instance does not support dcim/mac-addresses, and interfaces.mac_address is not writable. "
+            f"This NetBox instance does not support dcim/mac-addresses, and {kind_label}.mac_address is not writable. "
             "Cannot set MAC safely."
         )
 
-    if not CAPABILITIES["interfaces_primary_mac_address_writable"]:
+    if not primary_writable:
         raise ValueError(
-            "This NetBox instance supports dcim/mac-addresses but interfaces.primary_mac_address is not writable. "
+            f"This NetBox instance supports dcim/mac-addresses but {kind_label}.primary_mac_address is not writable. "
             "Cannot set MAC safely."
         )
 
-    # Create or reuse the MAC address object, and assign it to the interface.
+    # Create or reuse the MAC address object, and assign it to the target interface.
     existing = netbox.get("dcim/mac-addresses", params={"mac_address": mac_address})
     mac_obj = None
     if isinstance(existing, list) and existing:
         mac_obj = existing[0]
-        # Ensure it's assigned to this interface.
-        if (mac_obj.get("assigned_object_type") != "dcim.interface") or (mac_obj.get("assigned_object_id") != interface_id):
+        if (mac_obj.get("assigned_object_type") != interface_content_type) or (mac_obj.get("assigned_object_id") != interface_id):
             mac_obj = netbox.update(
                 "dcim/mac-addresses",
                 mac_obj["id"],
-                {"assigned_object_type": "dcim.interface", "assigned_object_id": interface_id},
+                {"assigned_object_type": interface_content_type, "assigned_object_id": interface_id},
             )
     else:
         mac_obj = netbox.create(
             "dcim/mac-addresses",
-            {"mac_address": mac_address, "assigned_object_type": "dcim.interface", "assigned_object_id": interface_id},
+            {"mac_address": mac_address, "assigned_object_type": interface_content_type, "assigned_object_id": interface_id},
         )
 
     # Prefer passing the ID (common NetBox behavior); fall back to nested object if needed.
     try:
-        return netbox.update("dcim/interfaces", interface_id, {"primary_mac_address": mac_obj["id"]})
+        return netbox.update(interface_endpoint, interface_id, {"primary_mac_address": mac_obj["id"]})
     except Exception:
-        return netbox.update("dcim/interfaces", interface_id, {"primary_mac_address": {"id": mac_obj["id"]}})
+        return netbox.update(interface_endpoint, interface_id, {"primary_mac_address": {"id": mac_obj["id"]}})
+
+
+@mcp.tool()
+def netbox_set_interface_mac(interface_id: int, mac_address: str):
+    """
+    Set the MAC address for a **device interface** (dcim/interfaces) in a NetBox-version-aware way.
+
+    For VM interfaces (virtualization/interfaces) use `netbox_set_vm_interface_mac` instead —
+    the two endpoints have independent schemas and IDs.
+
+    Behavior:
+    - If dcim/interfaces.mac_address is writable, set it directly (older NetBox).
+    - Else, if dcim/mac-addresses exists and dcim/interfaces.primary_mac_address is writable,
+      create/assign a MAC object and set primary_mac_address (NetBox 4.x).
+    """
+    return _set_mac_on_interface(
+        interface_endpoint="dcim/interfaces",
+        interface_content_type="dcim.interface",
+        interface_id=interface_id,
+        mac_address=mac_address,
+        legacy_writable=CAPABILITIES["interfaces_mac_address_writable"],
+        primary_writable=CAPABILITIES["interfaces_primary_mac_address_writable"],
+        kind_label="dcim/interfaces",
+    )
+
+
+@mcp.tool()
+def netbox_set_vm_interface_mac(vm_interface_id: int, mac_address: str):
+    """
+    Set the MAC address for a **VM interface** (virtualization/interfaces) in a NetBox-version-aware way.
+
+    For physical / device interfaces (dcim/interfaces) use `netbox_set_interface_mac` instead —
+    the two endpoints have independent schemas and IDs (id 45 in dcim/interfaces is a different
+    object from id 45 in virtualization/interfaces).
+
+    Behavior:
+    - If virtualization/interfaces.mac_address is writable, set it directly (older NetBox).
+    - Else, if dcim/mac-addresses exists and virtualization/interfaces.primary_mac_address is
+      writable, create/assign a MAC object (with assigned_object_type=virtualization.vminterface)
+      and set primary_mac_address (NetBox 4.x).
+    """
+    return _set_mac_on_interface(
+        interface_endpoint="virtualization/interfaces",
+        interface_content_type="virtualization.vminterface",
+        interface_id=vm_interface_id,
+        mac_address=mac_address,
+        legacy_writable=CAPABILITIES["vm_interfaces_mac_address_writable"],
+        primary_writable=CAPABILITIES["vm_interfaces_primary_mac_address_writable"],
+        kind_label="virtualization/interfaces",
+    )
 
 
 @mcp.tool()
