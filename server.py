@@ -160,6 +160,22 @@ def _truthy_env(name: str, default: str = "false") -> bool:
     raw = os.getenv(name, default)
     return str(raw).strip().lower() in ("1", "true", "yes", "on")
 
+def _build_query_params(filters: dict | None = None, *, fields: list | None = None,
+                        limit: int | None = None, offset: int | None = None,
+                        brief: bool = False) -> dict:
+    """Merge user filters with optional NetBox query knobs (fields/pagination/brief)."""
+    params = dict(filters or {})
+    if fields:
+        params['fields'] = ','.join(fields)
+    if limit is not None:
+        params['limit'] = limit
+    if offset is not None:
+        params['offset'] = offset
+    if brief:
+        params['brief'] = 'true'
+    return params
+
+
 def _maybe_wrap_results(value):
     """
     Some MCP clients/framework helpers treat a returned Python list as a list of
@@ -348,12 +364,21 @@ def netbox_set_interface_mac(interface_id: int, mac_address: str):
 
 
 @mcp.tool()
-def netbox_get_objects(object_type: str, filters: dict):
+def netbox_get_objects(object_type: str, filters: dict,
+                       fields: list = None, limit: int = None,
+                       offset: int = None, brief: bool = False):
     """
-    Get objects from NetBox based on their type and filters
+    Get objects from NetBox based on their type and filters.
+
     Args:
         object_type: String representing the NetBox object type (e.g. "devices", "ip-addresses")
         filters: dict of filters to apply to the API call based on the NetBox API filtering options
+        fields: Optional list of field names to include in each result. Using this can
+            dramatically reduce token usage (typically 80-90% smaller payload).
+            Example: fields=["id", "name"]
+        limit: Optional max number of objects to return (page size).
+        offset: Optional pagination offset.
+        brief: If True, request NetBox's minimal/brief representation.
 
     Valid object types: see NETBOX_OBJECT_TYPES dict at the top of this module.
 
@@ -366,32 +391,36 @@ def netbox_get_objects(object_type: str, filters: dict):
         
     # Get API endpoint from mapping
     endpoint = NETBOX_OBJECT_TYPES[object_type]
-        
-    # Make API call
-    results = netbox.get(endpoint, params=filters)
+
+    params = _build_query_params(filters, fields=fields, limit=limit,
+                                 offset=offset, brief=brief)
+    results = netbox.get(endpoint, params=params)
     return _maybe_wrap_results(results)
 
 @mcp.tool()
-def netbox_get_object_by_id(object_type: str, object_id: int):
+def netbox_get_object_by_id(object_type: str, object_id: int,
+                            fields: list = None, brief: bool = False):
     """
     Get detailed information about a specific NetBox object by its ID.
-    
+
     Args:
         object_type: String representing the NetBox object type (e.g. "devices", "ip-addresses")
         object_id: The numeric ID of the object
-    
+        fields: Optional list of field names to include in the response. Using this can
+            dramatically reduce token usage (typically 80-90% smaller payload).
+            Example: fields=["id", "name"]
+        brief: If True, request NetBox's minimal/brief representation.
+
     Returns:
-        Complete object details
+        Complete object details (or only the requested fields when `fields` is given).
     """
     # Validate object_type exists in mapping
     if object_type not in NETBOX_OBJECT_TYPES:
         valid_types = "\n".join(f"- {t}" for t in sorted(NETBOX_OBJECT_TYPES.keys()))
         raise ValueError(f"Invalid object_type. Must be one of:\n{valid_types}")
-        
-    # Get API endpoint from mapping
-    endpoint = f"{NETBOX_OBJECT_TYPES[object_type]}/{object_id}"
-    
-    return netbox.get(endpoint)
+
+    params = _build_query_params(fields=fields, brief=brief)
+    return netbox.get(NETBOX_OBJECT_TYPES[object_type], id=object_id, params=params)
 
 @mcp.tool()
 def netbox_search_objects(query: str, object_type: str = None,
@@ -443,13 +472,19 @@ def netbox_search_objects(query: str, object_type: str = None,
     return results
 
 @mcp.tool()
-def netbox_get_changelogs(filters: dict):
+def netbox_get_changelogs(filters: dict, fields: list = None,
+                          limit: int = None, offset: int = None):
     """
     Get object change records (changelogs) from NetBox based on filters.
     
     Args:
         filters: dict of filters to apply to the API call based on the NetBox API filtering options
-    
+        fields: Optional list of field names to include in each result. Using this can
+            dramatically reduce token usage (typically 80-90% smaller payload).
+            Example: fields=["id", "action", "time", "user_name"]
+        limit: Optional max number of changelogs to return (page size).
+        offset: Optional pagination offset.
+
     Returns:
         List of changelog objects matching the specified filters
     
@@ -487,9 +522,8 @@ def netbox_get_changelogs(filters: dict):
     - time: The timestamp when the change was made
     """
     endpoint = "core/object-changes"
-    
-    # Make API call
-    results = netbox.get(endpoint, params=filters)
+    params = _build_query_params(filters, fields=fields, limit=limit, offset=offset)
+    results = netbox.get(endpoint, params=params)
     return _maybe_wrap_results(results)
 
 @mcp.tool()
