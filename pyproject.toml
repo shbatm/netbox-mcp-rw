@@ -10,7 +10,11 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "httpx>=0.28.1",
-    "mcp[cli]>=1.3.0",
+    # Pin to the MCP SDK v1 line: server.py uses the v1 `mcp.server.fastmcp`
+    # import, which was renamed/removed in mcp 2.x. Without the upper bound pip
+    # resolves mcp 2.x and the server crashes on import (ModuleNotFoundError:
+    # mcp.server.fastmcp).
+    "mcp[cli]>=1.3.0,<2",
     "requests>=2.31.0",
 ]
 
